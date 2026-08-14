@@ -17,6 +17,12 @@
     "node": ">=18"
   },
   "packageManager": "npm@11.12.1",
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": ">=10.0.0"
+    }
+  },
 
   "workspaces": [
     "apps/web",
