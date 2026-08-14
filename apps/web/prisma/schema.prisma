@@ -1,0 +1,259 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ─────────────────────────────────────────────────────────────────────
+
+enum ProjectStage {
+  LEAD_CAPTURED
+  SURVEY_SCHEDULED
+  SURVEY_COMPLETED
+  PO_SIGNED
+  INVOICED
+  INC_IN_PROGRESS
+  PLANT_INSTALLED
+  DOC_SUBMITTED
+  DOC_VERIFIED
+  METER_SEALING
+  DCR_FILED
+  INST_DETAIL_SUBMITTED
+  PCR_FILED
+  SUBSIDY_REDEEMED
+  CLOSED
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum EmployeeRole {
+  ADMIN
+  MANAGER
+  SALESPERSON
+  TECHNICIAN
+  OFFICE_STAFF
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  STAGE_CHANGED
+  APPROVAL_REQUIRED
+  TASK_OVERDUE
+  DISCOM_UPDATE
+  GENERAL
+}
+
+// ─── Core Business Models ──────────────────────────────────────────────────────
+
+model Employee {
+  id        String       @id @default(uuid())
+  password  String?
+  name      String
+  email     String?      @unique
+  phone     String?
+  role      EmployeeRole @default(TECHNICIAN)
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  assignedTasks TaskAssignment[]
+  activities    ActivityLog[]     @relation("ActivityByEmployee")
+  projectsSold  Project[]         @relation("SoldByEmployee")
+  notifications Notification[]
+  schedule      EmployeeSchedule?
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  callingNo String?
+  mobile    String?
+  email     String?
+  caNumber  String?
+  division  String?
+  location  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects     Project[]
+  discomIssues DiscomIssue[]
+
+  @@index([name])
+  @@index([division])
+  @@index([caNumber])
+  @@index([createdAt])
+}
+
+model Project {
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  // Sales Info
+  capacity     Float?
+  sourceOfLead String?
+  brandModel   String?
+  referral     String?
+  soldById     String?
+  soldByEmployee Employee? @relation("SoldByEmployee", fields: [soldById], references: [id])
+  soldBy       String?    // Freetext from spreadsheet Col O ("Sold By")
+
+  // Financial
+  amount  Float?
+  balance Float?
+
+  // Pipeline Stage
+  stage        ProjectStage @default(LEAD_CAPTURED)
+  surveyStatus String?
+  poSigned     String?
+  invoiceDate  DateTime?
+  incStage     String?
+  plantStatus  String?
+
+  // Documentation & Net Metering
+  docSubmitted   String?
+  documentStatus String?
+  meterTypeSl    String?
+  status         String?
+  sealingIndent  String?
+  dcr            String?
+  instDetailSub  String?
+  pcr            String?
+  subsidyRedeem  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks         TaskAssignment[]
+  activities    ActivityLog[]
+  netMeterFiles NetMeterFile[]
+
+  @@index([customerId])
+  @@index([stage])
+  @@index([createdAt])
+  @@index([stage, createdAt])
+}
+
+model TaskAssignment {
+  id           String       @id @default(uuid())
+  projectId    String?
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignedToId String
+  assignedTo   Employee     @relation(fields: [assignedToId], references: [id])
+
+  title       String
+  description String?
+  status      TaskStatus   @default(PENDING)
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employeeId String?
+  employee   Employee? @relation("ActivityByEmployee", fields: [employeeId], references: [id])
+
+  action        String
+  fieldName     String?
+  description   String
+  oldValue      String?
+  newValue      String?
+  previousState Json?
+  newState      Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userEmail String?
+  userName  String?
+  role      String?
+  action    String
+  ipAddress String?
+  userAgent String?
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userEmail])
+}
+
+model DiscomIssue {
+  id           String    @id @default(uuid())
+  customerId   String?
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  date         DateTime?
+  customerName String?
+  caNumber     String?
+  division     String?
+  mobile       String?
+  issueDesc    String?
+  remark       String?
+  status       String?   @default("OPEN")
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model EmployeeSchedule {
+  id         String   @id @default(uuid())
+  employeeId String   @unique
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  monday     String?
+  tuesday    String?
+  wednesday  String?
+  thursday   String?
+  friday     String?
+  saturday   String?
+  sunday     String?
+}
+
+model NetMeterFile {
+  id           String   @id @default(uuid())
+  projectId    String?
+  project      Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  customerName String?
+  mobile       String?
+  email        String?
+  fileStatus   String?  @default("PENDING")
+  source       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Notification {
+  id         String           @id @default(uuid())
+  employeeId String
+  employee   Employee         @relation(fields: [employeeId], references: [id])
+  type       NotificationType @default(GENERAL)
+  title      String
+  message    String
+  isRead     Boolean          @default(false)
+  actionUrl  String?
+  createdAt  DateTime         @default(now())
+}
